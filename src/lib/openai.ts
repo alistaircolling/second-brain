@@ -19,7 +19,10 @@ Extract:
 - person_name: (people only) The person's name
 - follow_up: (people only) What action to take
 - due_date: ISO date if mentioned or implied (e.g., "tomorrow" = calculate date)
+- priority: 1 (high), 2 (medium), or 3 (low) - infer from urgency words like "urgent", "asap", "when I get a chance"
 - notes: Any additional context
+- needs_clarification: true if the input is vague and would benefit from a follow-up question (e.g., missing deadline, unclear action, ambiguous context)
+- clarification_question: If needs_clarification is true, provide a brief follow-up question to ask
 
 Return JSON:
 {
@@ -66,10 +69,15 @@ export const generateDigest = async (
   context: string
 ): Promise<string> => {
   const prompts = {
-    morning: `You are a personal assistant. Given the following tasks and items, create a brief morning briefing (under 150 words). Focus on:
-- Top 3 priorities for today
-- Any due dates today or overdue
-- One thing that might be blocked or needs attention
+    morning: `You are a personal assistant. Given the following tasks and items, create a brief morning planning message (under 150 words).
+
+Start with: "Good morning! Here's what's on your plate:"
+
+Then list the most essential tasks in order of priority (priority 1 first, then 2, then 3). 
+Highlight anything due today or overdue.
+
+End with: "What are your top 3 priorities today? Reply to set your focus."
+
 Be concise and actionable.`,
     evening: `You are a personal assistant. Given the following tasks and items, create a brief evening review (under 150 words). Focus on:
 - What was captured today
@@ -88,6 +96,27 @@ Be thorough but actionable.`,
     model: 'gpt-4o-mini',
     messages: [
       { role: 'system', content: prompts[type] },
+      { role: 'user', content: context }
+    ],
+    temperature: 0.7,
+  });
+
+  return response.choices[0].message.content || '';
+};
+
+export const generateReview = async (context: string): Promise<string> => {
+  const response = await getOpenAI().chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      { 
+        role: 'system', 
+        content: `You are a personal assistant. Given the following tasks and items, create a quick review (under 200 words).
+
+Group by priority (P1 first, then P2, then P3, then unprioritized).
+Show due dates where relevant.
+Highlight anything overdue or due today.
+Be concise and scannable.` 
+      },
       { role: 'user', content: context }
     ],
     temperature: 0.7,

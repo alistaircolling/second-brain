@@ -44,14 +44,18 @@ export const processCapture = async (
     filedToId: recordId,
   });
 
-  // Confirm in Slack
-  await sendSlackReply(
-    channel,
-    slackTs,
-    `✓ Filed to *${result.destination}*: ${result.data.title}` +
-    (result.data.due_date ? ` (due: ${result.data.due_date})` : '') +
-    `\nReply \`fix: <category>\` if wrong.`
-  );
+  // Build confirmation message
+  const priorityLabel = result.data.priority ? ` [P${result.data.priority}]` : '';
+  let message = `✓ Filed to *${result.destination}*${priorityLabel}: ${result.data.title}`;
+  if (result.data.due_date) message += ` (due: ${result.data.due_date})`;
+  message += `\nReply \`fix: <category>\` if wrong.`;
+
+  // Ask follow-up question if needed
+  if (result.data.needs_clarification && result.data.clarification_question) {
+    message += `\n\n💬 ${result.data.clarification_question}`;
+  }
+
+  await sendSlackReply(channel, slackTs, message);
 };
 
 export const handleFix = async (event: any): Promise<void> => {

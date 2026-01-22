@@ -24,6 +24,10 @@ const buildProperties = (destination: string, data: Record<string, any>) => {
     base['Notes'] = { rich_text: [{ text: { content: data.notes } }] };
   }
 
+  if (data.priority) {
+    base['Priority'] = { number: data.priority };
+  }
+
   switch (destination) {
     case 'tasks':
       return {

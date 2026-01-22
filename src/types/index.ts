@@ -8,7 +8,10 @@ export interface ClassificationResult {
     person_name?: string;
     follow_up?: string;
     due_date?: string;
+    priority?: number;
     notes?: string;
+    needs_clarification?: boolean;
+    clarification_question?: string;
   };
 }
 
