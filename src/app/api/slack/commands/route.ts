@@ -41,7 +41,7 @@ const formatItems = (items: any[]): string => {
     .join('\n');
 };
 
-const handleReview = async (userId: string) => {
+const handleReview = async (channelId: string) => {
   try {
     const items = await getActiveItems();
     
@@ -62,14 +62,13 @@ ${formatItems(items.admin)}
     const review = await generateReview(context);
     
     await getSlackClient().chat.postMessage({
-      channel: userId,
+      channel: channelId,
       text: `📋 *Your Review*\n\n${review}`,
     });
   } catch (error) {
     console.error('Review command failed:', error);
-    // Send error message to user
     await getSlackClient().chat.postMessage({
-      channel: userId,
+      channel: channelId,
       text: '❌ Sorry, something went wrong generating your review. Check Vercel logs for details.',
     });
   }
@@ -87,14 +86,14 @@ export async function POST(req: NextRequest) {
   // Parse form data
   const params = new URLSearchParams(body);
   const command = params.get('command');
-  const userId = params.get('user_id');
+  const channelId = params.get('channel_id');
 
-  if (command === '/review' && userId) {
+  if (command === '/review' && channelId) {
     // Acknowledge immediately, process in background
-    waitUntil(handleReview(userId));
+    waitUntil(handleReview(channelId));
     return NextResponse.json({
       response_type: 'ephemeral',
-      text: '📋 Generating your review... Check your DMs in a moment.',
+      text: '📋 Generating your review...',
     });
   }
 
