@@ -151,26 +151,26 @@ export const searchItems = async (
 ): Promise<Array<{ id: string; title: string; database: string; priority?: number; dueDate?: string }>> => {
   const results: Array<{ id: string; title: string; database: string; priority?: number; dueDate?: string }> = [];
   
-  const databases: Array<keyof typeof DB_IDS> = ['tasks', 'work', 'people', 'admin'];
+  // Map database to its title property name
+  const dbConfig: Array<{ db: keyof typeof DB_IDS; titleProp: string }> = [
+    { db: 'tasks', titleProp: 'Title' },
+    { db: 'work', titleProp: 'Title' },
+    { db: 'people', titleProp: 'Name' },
+    { db: 'admin', titleProp: 'Title' },
+  ];
   
-  for (const db of databases) {
-    if (db === 'inboxLog') continue;
-    
+  for (const { db, titleProp } of dbConfig) {
     const response = await getNotion().databases.query({
       database_id: DB_IDS[db],
       filter: {
-        or: [
-          { property: 'Title', title: { contains: query } },
-          { property: 'Name', title: { contains: query } },
-        ],
+        property: titleProp,
+        title: { contains: query },
       },
     });
     
     for (const page of response.results) {
       const props = (page as any).properties;
-      const title = props.Title?.title?.[0]?.text?.content 
-        || props.Name?.title?.[0]?.text?.content 
-        || 'Untitled';
+      const title = props[titleProp]?.title?.[0]?.text?.content || 'Untitled';
       
       results.push({
         id: page.id,
