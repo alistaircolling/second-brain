@@ -1,5 +1,5 @@
 import { classifyMessage } from '@/lib/openai';
-import { createNotionRecord, createInboxLogEntry, findInboxLogBySlackTs, updateInboxLogEntry } from '@/lib/notion';
+import { createNotionRecord, createInboxLogEntry, findInboxLogBySlackTs, updateInboxLogEntry, searchItems, updateNotionItem } from '@/lib/notion';
 import { sendSlackReply } from '@/lib/slack';
 import { ClassificationResult } from '@/types';
 
@@ -10,6 +10,12 @@ export const processCapture = async (
 ): Promise<void> => {
   // Classify the message
   const result = await classifyMessage(text);
+
+  // Handle update actions
+  if (result.action === 'update' && result.update) {
+    await handleUpdateRequest(result, text, slackTs, channel);
+    return;
+  }
 
   // If confidence is below threshold, ask for clarification
   if (result.confidence < 0.7) {
@@ -56,6 +62,133 @@ export const processCapture = async (
   }
 
   await sendSlackReply(channel, slackTs, message);
+};
+
+const handleUpdateRequest = async (
+  result: ClassificationResult,
+  originalText: string,
+  slackTs: string,
+  channel: string
+): Promise<void> => {
+  const { search_query, field, value } = result.update!;
+  
+  // Search for matching items
+  const matches = await searchItems(search_query);
+  
+  if (matches.length === 0) {
+    await sendSlackReply(
+      channel,
+      slackTs,
+      `I couldn't find any items matching "${search_query}". Try a different search term.`
+    );
+    return;
+  }
+  
+  // Store pending update in inbox log
+  const pendingData = JSON.stringify({ matches, field, value });
+  await createInboxLogEntry({
+    originalText: originalText,
+    destination: 'tasks', // placeholder
+    confidence: result.confidence,
+    slackTs,
+    status: 'Pending Update',
+    filedToId: pendingData, // store update data here temporarily
+  });
+  
+  // Build confirmation message
+  const fieldLabel = field === 'status' ? 'status' : 'due date';
+  
+  if (matches.length === 1) {
+    const match = matches[0];
+    const priorityLabel = match.priority ? ` [P${match.priority}]` : '';
+    const dueLabel = match.dueDate ? ` (due: ${match.dueDate})` : '';
+    
+    await sendSlackReply(
+      channel,
+      slackTs,
+      `Found: *${match.title}*${priorityLabel}${dueLabel} in _${match.database}_\n` +
+      `Update ${fieldLabel} to *${value}*?\n` +
+      `Reply *yes* to confirm or *no* to cancel.`
+    );
+  } else {
+    const list = matches
+      .slice(0, 5)
+      .map((m, i) => {
+        const priorityLabel = m.priority ? ` [P${m.priority}]` : '';
+        return `${i + 1}. ${m.title}${priorityLabel} _(${m.database})_`;
+      })
+      .join('\n');
+    
+    await sendSlackReply(
+      channel,
+      slackTs,
+      `Found ${matches.length} items matching "${search_query}":\n${list}\n\n` +
+      `Reply with a number (1-${Math.min(matches.length, 5)}) to update ${fieldLabel} to *${value}*, or *no* to cancel.`
+    );
+  }
+};
+
+export const handleUpdateConfirmation = async (event: any): Promise<void> => {
+  const reply = event.text.trim().toLowerCase();
+  
+  // Find the pending update
+  const inboxEntry = await findInboxLogBySlackTs(event.thread_ts);
+  if (!inboxEntry) return;
+  
+  const status = inboxEntry.properties.Status?.select?.name;
+  if (status !== 'Pending Update') return;
+  
+  // Parse the pending update data
+  const pendingData = inboxEntry.properties['Filed To ID']?.rich_text?.[0]?.text?.content;
+  if (!pendingData) return;
+  
+  const { matches, field, value } = JSON.parse(pendingData);
+  
+  // Handle cancellation
+  if (reply === 'no' || reply === 'cancel') {
+    await updateInboxLogEntry(inboxEntry.id, {
+      Status: { select: { name: 'Cancelled' } },
+    });
+    await sendSlackReply(event.channel, event.thread_ts, 'Update cancelled.');
+    return;
+  }
+  
+  // Determine which item to update
+  let itemToUpdate;
+  
+  if (reply === 'yes' && matches.length === 1) {
+    itemToUpdate = matches[0];
+  } else {
+    const num = parseInt(reply);
+    if (!isNaN(num) && num >= 1 && num <= matches.length) {
+      itemToUpdate = matches[num - 1];
+    }
+  }
+  
+  if (!itemToUpdate) {
+    await sendSlackReply(
+      event.channel,
+      event.thread_ts,
+      `Please reply with *yes*, a number (1-${matches.length}), or *no* to cancel.`
+    );
+    return;
+  }
+  
+  // Perform the update
+  await updateNotionItem(itemToUpdate.id, field, value);
+  
+  // Update inbox log
+  await updateInboxLogEntry(inboxEntry.id, {
+    Status: { select: { name: 'Updated' } },
+    'Filed To ID': { rich_text: [{ text: { content: itemToUpdate.id } }] },
+  });
+  
+  const fieldLabel = field === 'status' ? 'Status' : 'Due date';
+  await sendSlackReply(
+    event.channel,
+    event.thread_ts,
+    `✓ Updated *${itemToUpdate.title}*: ${fieldLabel} → *${value}*`
+  );
 };
 
 export const handleFix = async (event: any): Promise<void> => {

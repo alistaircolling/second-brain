@@ -145,3 +145,61 @@ export const updateInboxLogEntry = async (
     properties: updates,
   });
 };
+
+export const searchItems = async (
+  query: string
+): Promise<Array<{ id: string; title: string; database: string; priority?: number; dueDate?: string }>> => {
+  const results: Array<{ id: string; title: string; database: string; priority?: number; dueDate?: string }> = [];
+  
+  const databases: Array<keyof typeof DB_IDS> = ['tasks', 'work', 'people', 'admin'];
+  
+  for (const db of databases) {
+    if (db === 'inboxLog') continue;
+    
+    const response = await getNotion().databases.query({
+      database_id: DB_IDS[db],
+      filter: {
+        or: [
+          { property: 'Title', title: { contains: query } },
+          { property: 'Name', title: { contains: query } },
+        ],
+      },
+    });
+    
+    for (const page of response.results) {
+      const props = (page as any).properties;
+      const title = props.Title?.title?.[0]?.text?.content 
+        || props.Name?.title?.[0]?.text?.content 
+        || 'Untitled';
+      
+      results.push({
+        id: page.id,
+        title,
+        database: db,
+        priority: props.Priority?.number,
+        dueDate: props['Due Date']?.date?.start,
+      });
+    }
+  }
+  
+  return results;
+};
+
+export const updateNotionItem = async (
+  pageId: string,
+  field: 'status' | 'due_date',
+  value: string
+): Promise<void> => {
+  const updates: Record<string, any> = {};
+  
+  if (field === 'status') {
+    updates['Status'] = { select: { name: value } };
+  } else if (field === 'due_date') {
+    updates['Due Date'] = { date: { start: value } };
+  }
+  
+  await getNotion().pages.update({
+    page_id: pageId,
+    properties: updates,
+  });
+};

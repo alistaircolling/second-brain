@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { verifySlackRequest } from '@/lib/slack';
-import { processCapture, handleFix } from '@/lib/classifier';
+import { processCapture, handleFix, handleUpdateConfirmation } from '@/lib/classifier';
 import { transcribeAudio } from '@/lib/openai';
 
 // Track processed events to prevent duplicates from Slack retries
@@ -42,9 +42,14 @@ export async function POST(req: NextRequest) {
   // Clean up old events after 5 minutes
   setTimeout(() => processedEvents.delete(eventId), 5 * 60 * 1000);
 
-  // Handle fix replies (messages in threads starting with "fix:")
-  if (event.thread_ts && event.text?.toLowerCase().startsWith('fix:')) {
-    waitUntil(handleFix(event));
+  // Handle thread replies (fix commands or update confirmations)
+  if (event.thread_ts) {
+    if (event.text?.toLowerCase().startsWith('fix:')) {
+      waitUntil(handleFix(event));
+    } else {
+      // Could be an update confirmation (yes/no/number)
+      waitUntil(handleUpdateConfirmation(event));
+    }
     return NextResponse.json({ ok: true });
   }
 

@@ -1,4 +1,5 @@
 export interface ClassificationResult {
+  action: 'create' | 'update';
   destination: 'tasks' | 'work' | 'people' | 'admin';
   confidence: number;
   data: {
@@ -12,6 +13,11 @@ export interface ClassificationResult {
     notes?: string;
     needs_clarification?: boolean;
     clarification_question?: string;
+  };
+  update?: {
+    search_query: string;
+    field: 'status' | 'due_date';
+    value: string;
   };
 }
 

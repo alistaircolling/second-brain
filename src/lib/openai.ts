@@ -6,29 +6,40 @@ const getOpenAI = () => new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const CLASSIFICATION_PROMPT = `You are a classification system for a personal task manager. 
 Analyze the input and return JSON only, no markdown.
 
+First determine the ACTION:
+- "create": User wants to add a new item (default)
+- "update": User wants to modify an existing item (e.g., "mark X as done", "change due date on X", "complete X", "set X to done")
+
 Categories:
 - "tasks": General to-do items, DIY tasks, things to order, online admin
 - "work": Work-related thoughts, meeting proposals, project tasks. Projects: Mintstars (main job), Rak (side project), Other (specify)
 - "people": Follow-ups with specific people, meetings to arrange with someone
 - "admin": Appointments, bills, scheduled events
 
-Extract:
+For CREATE actions, extract:
 - title: Brief, actionable title
 - project: (work only) "Mintstars", "Rak", or other project name
 - category: (admin only) "Appointments", "Bills", or "Orders"
 - person_name: (people only) The person's name
 - follow_up: (people only) What action to take
-- due_date: ISO date if mentioned or implied (e.g., "tomorrow" = calculate date)
+- due_date: ISO date if mentioned or implied (e.g., "tomorrow" = calculate date). Today is ${new Date().toISOString().split('T')[0]}.
 - priority: 1 (high), 2 (medium), or 3 (low) - infer from urgency words like "urgent", "asap", "when I get a chance"
 - notes: Any additional context
-- needs_clarification: true if the input is vague and would benefit from a follow-up question (e.g., missing deadline, unclear action, ambiguous context)
-- clarification_question: If needs_clarification is true, provide a brief follow-up question to ask
+- needs_clarification: true if the input is vague and would benefit from a follow-up question
+- clarification_question: If needs_clarification is true, provide a brief follow-up question
+
+For UPDATE actions, extract:
+- update.search_query: Keywords to find the item (e.g., "Post laptop", "Vercel")
+- update.field: "status" or "due_date"
+- update.value: The new value (e.g., "Done", "2024-01-25")
 
 Return JSON:
 {
+  "action": "create" | "update",
   "destination": "tasks" | "work" | "people" | "admin",
   "confidence": 0.0-1.0,
-  "data": { ... }
+  "data": { ... },
+  "update": { "search_query": "...", "field": "...", "value": "..." }  // only for update action
 }`;
 
 export const classifyMessage = async (text: string): Promise<ClassificationResult> => {
