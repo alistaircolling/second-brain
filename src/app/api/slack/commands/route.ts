@@ -42,9 +42,10 @@ const formatItems = (items: any[]): string => {
 };
 
 const handleReview = async (userId: string) => {
-  const items = await getActiveItems();
-  
-  const context = `
+  try {
+    const items = await getActiveItems();
+    
+    const context = `
 Tasks (${items.tasks.length}):
 ${formatItems(items.tasks)}
 
@@ -56,14 +57,22 @@ ${formatItems(items.people)}
 
 Admin (${items.admin.length}):
 ${formatItems(items.admin)}
-  `.trim();
+    `.trim();
 
-  const review = await generateReview(context);
-  
-  await getSlackClient().chat.postMessage({
-    channel: userId,
-    text: `📋 *Your Review*\n\n${review}`,
-  });
+    const review = await generateReview(context);
+    
+    await getSlackClient().chat.postMessage({
+      channel: userId,
+      text: `📋 *Your Review*\n\n${review}`,
+    });
+  } catch (error) {
+    console.error('Review command failed:', error);
+    // Send error message to user
+    await getSlackClient().chat.postMessage({
+      channel: userId,
+      text: '❌ Sorry, something went wrong generating your review. Check Vercel logs for details.',
+    });
+  }
 };
 
 export async function POST(req: NextRequest) {
