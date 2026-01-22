@@ -78,18 +78,24 @@ Highlight anything due today or overdue.
 
 End with: "What are your top 3 priorities today? Reply to set your focus."
 
-Be concise and actionable.`,
+Be concise and actionable.
+
+Use Slack formatting (NOT markdown): *bold*, _italic_, - for bullets`,
     evening: `You are a personal assistant. Given the following tasks and items, create a brief evening review (under 150 words). Focus on:
 - What was captured today
 - Any items that need attention tomorrow
 - One small win or progress to acknowledge
-Be concise and encouraging.`,
+Be concise and encouraging.
+
+Use Slack formatting (NOT markdown): *bold*, _italic_, - for bullets`,
     weekly: `You are a personal assistant. Given the following tasks and items, create a weekly review (under 300 words). Focus on:
 - Overview of active projects (Mintstars, Rak, etc.)
 - Items that have been sitting too long
 - People you haven't followed up with
 - Suggested priorities for the coming week
-Be thorough but actionable.`,
+Be thorough but actionable.
+
+Use Slack formatting (NOT markdown): *bold*, _italic_, - for bullets`,
   };
 
   const response = await getOpenAI().chat.completions.create({
@@ -115,7 +121,12 @@ export const generateReview = async (context: string): Promise<string> => {
 Group by priority (P1 first, then P2, then P3, then unprioritized).
 Show due dates where relevant.
 Highlight anything overdue or due today.
-Be concise and scannable.` 
+Be concise and scannable.
+
+Use Slack formatting (NOT markdown):
+- Bold: *text* (single asterisks)
+- Italic: _text_
+- Bullet points: - item` 
       },
       { role: 'user', content: context }
     ],
