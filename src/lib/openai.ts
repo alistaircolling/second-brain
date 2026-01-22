@@ -129,7 +129,7 @@ export const generateReview = async (context: string): Promise<string> => {
         role: 'system', 
         content: `You are a personal assistant. Given the following tasks and items, create a quick review (under 200 words).
 
-Group by priority (P1 first, then P2, then P3, then unprioritized).
+Group by priority (Priority 1 first, then Priority 2, then Priority 3, then unprioritized).
 Show due dates where relevant.
 Highlight anything overdue or due today.
 Be concise and scannable.

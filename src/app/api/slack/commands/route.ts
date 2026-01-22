@@ -35,8 +35,8 @@ const formatItems = (items: any[]): string => {
         || 'Untitled';
       const dueDate = item.properties['Due Date']?.date?.start;
       const priority = item.properties['Priority']?.number;
-      const priorityLabel = priority ? `[P${priority}]` : '';
-      return `- ${priorityLabel} ${title}${dueDate ? ` (due: ${dueDate})` : ''}`;
+      const priorityLabel = priority ? `Priority ${priority}` : '';
+      return `- ${priorityLabel ? `${priorityLabel}: ` : ''}${title}${dueDate ? ` (due: ${dueDate})` : ''}`;
     })
     .join('\n');
 };
