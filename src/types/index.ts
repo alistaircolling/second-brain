@@ -1,5 +1,5 @@
 export interface ClassificationResult {
-  action: 'create' | 'update';
+  action: 'create' | 'update' | 'query';
   destination: 'tasks' | 'work' | 'people' | 'admin';
   confidence: number;
   data: {
@@ -18,6 +18,10 @@ export interface ClassificationResult {
     search_query: string;
     field: 'status' | 'due_date';
     value: string;
+  };
+  query?: {
+    database: 'tasks' | 'work' | 'people' | 'admin' | 'all';
+    filter?: 'due_today' | 'overdue' | 'high_priority' | 'all_active';
   };
 }
 
