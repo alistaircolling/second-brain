@@ -182,6 +182,7 @@ export const searchItems = async (
   query: string
 ): Promise<Array<{ id: string; title: string; database: string; priority?: number; dueDate?: string }>> => {
   const results: Array<{ id: string; title: string; database: string; priority?: number; dueDate?: string }> = [];
+  const seen = new Set<string>();
   
   // Map database to its title property name
   const dbConfig: Array<{ db: keyof typeof DB_IDS; titleProp: string }> = [
@@ -191,26 +192,36 @@ export const searchItems = async (
     { db: 'admin', titleProp: 'Title' },
   ];
   
-  for (const { db, titleProp } of dbConfig) {
-    const response = await getNotion().databases.query({
-      database_id: DB_IDS[db],
-      filter: {
-        property: titleProp,
-        title: { contains: query },
-      },
+  const addResult = (page: any, props: any, titleProp: string, db: string) => {
+    if (seen.has(page.id)) return;
+    seen.add(page.id);
+    const title = props[titleProp]?.title?.[0]?.text?.content || 'Untitled';
+    results.push({
+      id: page.id,
+      title,
+      database: db,
+      priority: props.Priority?.number,
+      dueDate: props['Due Date']?.date?.start,
     });
-    
-    for (const page of response.results) {
-      const props = (page as any).properties;
-      const title = props[titleProp]?.title?.[0]?.text?.content || 'Untitled';
-      
-      results.push({
-        id: page.id,
-        title,
-        database: db,
-        priority: props.Priority?.number,
-        dueDate: props['Due Date']?.date?.start,
+  };
+  
+  // Build search terms: full query + individual words (if multi-word)
+  const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+  const searchTerms = words.length > 1 ? [query, ...words] : [query];
+  
+  for (const { db, titleProp } of dbConfig) {
+    for (const term of searchTerms) {
+      const response = await getNotion().databases.query({
+        database_id: DB_IDS[db],
+        filter: {
+          property: titleProp,
+          title: { contains: term },
+        },
       });
+      
+      for (const page of response.results) {
+        addResult(page, (page as any).properties, titleProp, db);
+      }
     }
   }
   
