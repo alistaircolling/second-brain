@@ -1,7 +1,14 @@
 import { classifyMessage } from '@/lib/openai';
-import { createNotionRecord, createInboxLogEntry, findInboxLogBySlackTs, updateInboxLogEntry, searchItems, updateNotionItem, queryDatabase } from '@/lib/notion';
+import { createNotionRecord, createInboxLogEntry, findInboxLogBySlackTs, updateInboxLogEntry, searchItems, updateNotionItem, getItemsByTag, queryDatabase } from '@/lib/notion';
 import { sendSlackReply } from '@/lib/slack';
 import { ClassificationResult } from '@/types';
+
+const getItemTitle = (item: any): string => {
+  const name = item.properties.Name?.title?.[0]?.text?.content;
+  const followUp = item.properties['Follow-up']?.rich_text?.[0]?.text?.content;
+  if (name && followUp) return `${followUp} ${name}`;
+  return item.properties.Title?.title?.[0]?.text?.content || name || 'Untitled';
+};
 
 export const processCapture = async (
   text: string,
@@ -13,7 +20,12 @@ export const processCapture = async (
 
   // Handle query actions
   if (result.action === 'query' && result.query) {
-    await handleQueryRequest(result, slackTs, channel);
+    // If tag-based query, use handleTagQuery
+    if (result.query.tag) {
+      await handleTagQuery(result.query.tag, slackTs, channel);
+    } else {
+      await handleQueryRequest(result, slackTs, channel);
+    }
     return;
   }
 
@@ -58,13 +70,19 @@ export const processCapture = async (
 
   // Build confirmation message
   const priorityLabel = result.data.priority ? ` [P${result.data.priority}]` : '';
-  let message = `✓ Filed to *${result.destination}*${priorityLabel}: ${result.data.title}`;
+  const tagsLabel = result.data.tags?.length ? ` [${result.data.tags.join(', ')}]` : '';
+  let message = `✓ Filed to *${result.destination}*${priorityLabel}${tagsLabel}: ${result.data.title}`;
   if (result.data.due_date) message += ` (due: ${result.data.due_date})`;
   message += `\nReply \`fix: <category>\` if wrong.`;
 
   // Ask follow-up question if needed
   if (result.data.needs_clarification && result.data.clarification_question) {
     message += `\n\n💬 ${result.data.clarification_question}`;
+  }
+  
+  // Suggest new tag if AI recommended one
+  if (result.data.suggested_tag) {
+    message += `\n\n🏷️ Suggested new tag: *${result.data.suggested_tag}* - would this be useful?`;
   }
 
   await sendSlackReply(channel, slackTs, message);
@@ -102,7 +120,8 @@ const handleUpdateRequest = async (
   });
   
   // Build confirmation message
-  const fieldLabel = field === 'status' ? 'status' : 'due date';
+  const fieldLabels: Record<string, string> = { status: 'status', due_date: 'due date', priority: 'priority' };
+  const fieldLabel = fieldLabels[field] || field;
   
   if (matches.length === 1) {
     const match = matches[0];
@@ -189,11 +208,43 @@ export const handleUpdateConfirmation = async (event: any): Promise<void> => {
     'Filed To ID': { rich_text: [{ text: { content: itemToUpdate.id } }] },
   });
   
-  const fieldLabel = field === 'status' ? 'Status' : 'Due date';
+  const fieldLabels: Record<string, string> = { status: 'Status', due_date: 'Due date', priority: 'Priority' };
+  const fieldLabel = fieldLabels[field] || field;
   await sendSlackReply(
     event.channel,
     event.thread_ts,
     `✓ Updated *${itemToUpdate.title}*: ${fieldLabel} → *${value}*`
+  );
+};
+
+const handleTagQuery = async (
+  tag: string,
+  slackTs: string,
+  channel: string
+): Promise<void> => {
+  const items = await getItemsByTag(tag);
+  
+  if (items.length === 0) {
+    await sendSlackReply(channel, slackTs, `No items found with tag *${tag}*.`);
+    return;
+  }
+
+  const tagEmojis: Record<string, string> = {
+    groceries: '🛒',
+    phone: '📞',
+    laptop: '💻',
+    home: '🏠',
+    office: '🏢',
+    errands: '🚗',
+  };
+  
+  const emoji = tagEmojis[tag] || '🏷️';
+  const list = items.map(item => `- ${getItemTitle(item)}`).join('\n');
+  
+  await sendSlackReply(
+    channel,
+    slackTs,
+    `${emoji} *${tag.charAt(0).toUpperCase() + tag.slice(1)} List* (${items.length} items)\n\n${list}`
   );
 };
 

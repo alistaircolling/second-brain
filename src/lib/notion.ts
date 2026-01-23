@@ -28,6 +28,10 @@ const buildProperties = (destination: string, data: Record<string, any>) => {
     base['Priority'] = { number: data.priority };
   }
 
+  if (data.tags && data.tags.length > 0) {
+    base['Tags'] = { multi_select: data.tags.map((tag: string) => ({ name: tag })) };
+  }
+
   switch (destination) {
     case 'tasks':
       return {
@@ -124,6 +128,34 @@ export const getActiveItems = async (): Promise<{
   return { tasks, work, people, admin };
 };
 
+export const getCompletedToday = async (): Promise<any[]> => {
+  const today = new Date().toISOString().split('T')[0];
+  
+  const completedTodayFilter = {
+    and: [
+      { property: 'Status', select: { equals: 'Done' } },
+      { property: 'Completed Date', date: { equals: today } },
+    ],
+  };
+
+  const completedLastEditedFilter = {
+    and: [
+      { property: 'Status', select: { equals: 'Done' } },
+      { timestamp: 'last_edited_time', last_edited_time: { on_or_after: today } },
+    ],
+  };
+
+  // Try with Completed Date field first, fall back to last_edited_time
+  const results = await Promise.all([
+    queryDatabase('tasks', completedLastEditedFilter).catch(() => []),
+    queryDatabase('work', completedLastEditedFilter).catch(() => []),
+    queryDatabase('people', completedLastEditedFilter).catch(() => []),
+    queryDatabase('admin', completedLastEditedFilter).catch(() => []),
+  ]);
+
+  return results.flat();
+};
+
 export const findInboxLogBySlackTs = async (slackTs: string): Promise<any | null> => {
   const response = await getNotion().databases.query({
     database_id: DB_IDS.inboxLog,
@@ -187,7 +219,7 @@ export const searchItems = async (
 
 export const updateNotionItem = async (
   pageId: string,
-  field: 'status' | 'due_date',
+  field: 'status' | 'due_date' | 'priority',
   value: string
 ): Promise<void> => {
   const updates: Record<string, any> = {};
@@ -195,11 +227,31 @@ export const updateNotionItem = async (
   if (field === 'status') {
     updates['Status'] = { select: { name: value } };
   } else if (field === 'due_date') {
-    updates['Due Date'] = { date: { start: value } };
+    updates['Due Date'] = value === 'remove' ? { date: null } : { date: { start: value } };
+  } else if (field === 'priority') {
+    updates['Priority'] = { number: parseInt(value) };
   }
   
   await getNotion().pages.update({
     page_id: pageId,
     properties: updates,
   });
+};
+
+export const getItemsByTag = async (tag: string): Promise<any[]> => {
+  const tagFilter = {
+    and: [
+      { property: 'Status', select: { does_not_equal: 'Done' } },
+      { property: 'Tags', multi_select: { contains: tag } },
+    ],
+  };
+
+  const results = await Promise.all([
+    queryDatabase('tasks', tagFilter).catch(() => []),
+    queryDatabase('work', tagFilter).catch(() => []),
+    queryDatabase('people', tagFilter).catch(() => []),
+    queryDatabase('admin', tagFilter).catch(() => []),
+  ]);
+
+  return results.flat();
 };

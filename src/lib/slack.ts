@@ -8,12 +8,14 @@ export const getSlackClient = getSlack;
 export const sendSlackReply = async (
   channel: string,
   threadTs: string,
-  text: string
+  text: string,
+  broadcast: boolean = true
 ): Promise<void> => {
   await getSlack().chat.postMessage({
     channel,
     thread_ts: threadTs,
     text,
+    reply_broadcast: broadcast,
   });
 };
 

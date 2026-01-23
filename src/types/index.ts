@@ -10,17 +10,20 @@ export interface ClassificationResult {
     follow_up?: string;
     due_date?: string;
     priority?: number;
+    tags?: string[];
+    suggested_tag?: string;
     notes?: string;
     needs_clarification?: boolean;
     clarification_question?: string;
   };
   update?: {
     search_query: string;
-    field: 'status' | 'due_date';
+    field: 'status' | 'due_date' | 'priority';
     value: string;
   };
   query?: {
-    database: 'tasks' | 'work' | 'people' | 'admin' | 'all';
+    tag?: string;
+    database?: 'tasks' | 'work' | 'people' | 'admin' | 'all';
     filter?: 'due_today' | 'overdue' | 'high_priority' | 'all_active';
   };
 }

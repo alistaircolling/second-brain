@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
-import { verifySlackRequest } from '@/lib/slack';
+import { verifySlackRequest, getSlackClient } from '@/lib/slack';
 import { processCapture, handleFix, handleUpdateConfirmation } from '@/lib/classifier';
 import { transcribeAudio } from '@/lib/openai';
 
 // Track processed events to prevent duplicates from Slack retries
 const processedEvents = new Set<string>();
+
+// Map emoji reactions to yes/no
+const YES_REACTIONS = ['white_check_mark', '+1', 'thumbsup', 'heavy_check_mark'];
+const NO_REACTIONS = ['-1', 'thumbsdown', 'x'];
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -23,6 +27,29 @@ export async function POST(req: NextRequest) {
   }
 
   const event = payload.event;
+
+  // Handle emoji reactions
+  if (event.type === 'reaction_added') {
+    const reaction = event.reaction;
+    if (YES_REACTIONS.includes(reaction) || NO_REACTIONS.includes(reaction)) {
+      // Get the message that was reacted to
+      const result = await getSlackClient().conversations.replies({
+        channel: event.item.channel,
+        ts: event.item.ts,
+        limit: 1,
+      });
+      const message = result.messages?.[0];
+      if (message?.thread_ts) {
+        const replyText = YES_REACTIONS.includes(reaction) ? 'yes' : 'no';
+        waitUntil(handleUpdateConfirmation({
+          text: replyText,
+          thread_ts: message.thread_ts,
+          channel: event.item.channel,
+        }));
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
 
   // Ignore bot messages and edits (but allow file_share for voice notes)
   if (event.bot_id) {

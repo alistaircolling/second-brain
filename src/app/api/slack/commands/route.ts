@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
-import { getActiveItems } from '@/lib/notion';
-import { generateReview } from '@/lib/openai';
+import { generateReviewMessage } from '@/lib/digest';
 import { getSlackClient } from '@/lib/slack';
 import crypto from 'crypto';
 
@@ -26,44 +25,13 @@ const verifySlackRequest = async (req: NextRequest, body: string): Promise<boole
   );
 };
 
-const formatItems = (items: any[]): string => {
-  return items
-    .slice(0, 10)
-    .map(item => {
-      const title = item.properties.Title?.title?.[0]?.text?.content 
-        || item.properties.Name?.title?.[0]?.text?.content 
-        || 'Untitled';
-      const dueDate = item.properties['Due Date']?.date?.start;
-      const priority = item.properties['Priority']?.number;
-      const priorityLabel = priority ? `Priority ${priority}` : '';
-      return `- ${priorityLabel ? `${priorityLabel}: ` : ''}${title}${dueDate ? ` (due: ${dueDate})` : ''}`;
-    })
-    .join('\n');
-};
-
 const handleReview = async (channelId: string) => {
   try {
-    const items = await getActiveItems();
-    
-    const context = `
-Tasks (${items.tasks.length}):
-${formatItems(items.tasks)}
-
-Work (${items.work.length}):
-${formatItems(items.work)}
-
-People to follow up with (${items.people.length}):
-${formatItems(items.people)}
-
-Admin (${items.admin.length}):
-${formatItems(items.admin)}
-    `.trim();
-
-    const review = await generateReview(context);
+    const review = await generateReviewMessage();
     
     await getSlackClient().chat.postMessage({
       channel: channelId,
-      text: `📋 *Your Review*\n\n${review}`,
+      text: review,
     });
   } catch (error) {
     console.error('Review command failed:', error);
