@@ -1,5 +1,5 @@
 import { Client } from '@notionhq/client';
-import { InboxLogEntry } from '@/types';
+import { InboxLogEntry, Studio, CreateStudioInput, UpdateStudioInput } from '@/types';
 
 const getNotion = () => new Client({ auth: process.env.NOTION_API_KEY });
 
@@ -9,6 +9,7 @@ const DB_IDS = {
   people: process.env.NOTION_PEOPLE_DB_ID!,
   admin: process.env.NOTION_ADMIN_DB_ID!,
   inboxLog: process.env.NOTION_INBOX_LOG_DB_ID!,
+  studios: process.env.NOTION_STUDIOS_DB_ID!,
 };
 
 const buildProperties = (destination: string, data: Record<string, any>) => {
@@ -274,4 +275,109 @@ export const getItemsByTag = async (tag: string): Promise<any[]> => {
   ]);
 
   return results.flat();
+};
+
+// Studio CRUD operations
+const parseStudioFromNotion = (page: any): Studio => {
+  const props = page.properties;
+  return {
+    id: page.id,
+    name: props.Name?.title?.[0]?.text?.content || '',
+    hourlyRate: props['Hourly Rate']?.number ?? undefined,
+    dayRate: props['Day Rate']?.number ?? undefined,
+    location: props.Location?.rich_text?.[0]?.text?.content || undefined,
+    description: props.Description?.rich_text?.[0]?.text?.content || undefined,
+    status: props.Status?.select?.name?.toLowerCase() === 'inactive' ? 'inactive' : 'active',
+    createdAt: page.created_time,
+    updatedAt: page.last_edited_time,
+  };
+};
+
+export const createStudio = async (input: CreateStudioInput): Promise<Studio> => {
+  const properties: Record<string, any> = {
+    Name: { title: [{ text: { content: input.name } }] },
+    Status: { select: { name: input.status === 'inactive' ? 'Inactive' : 'Active' } },
+  };
+
+  if (input.hourlyRate !== undefined) {
+    properties['Hourly Rate'] = { number: input.hourlyRate };
+  }
+  if (input.dayRate !== undefined) {
+    properties['Day Rate'] = { number: input.dayRate };
+  }
+  if (input.location) {
+    properties['Location'] = { rich_text: [{ text: { content: input.location } }] };
+  }
+  if (input.description) {
+    properties['Description'] = { rich_text: [{ text: { content: input.description } }] };
+  }
+
+  const page = await getNotion().pages.create({
+    parent: { database_id: DB_IDS.studios },
+    properties,
+  });
+
+  return parseStudioFromNotion(page);
+};
+
+export const getStudios = async (): Promise<Studio[]> => {
+  const response = await getNotion().databases.query({
+    database_id: DB_IDS.studios,
+  });
+
+  return response.results.map(parseStudioFromNotion);
+};
+
+export const getStudioById = async (id: string): Promise<Studio | null> => {
+  try {
+    const page = await getNotion().pages.retrieve({ page_id: id });
+    return parseStudioFromNotion(page);
+  } catch {
+    return null;
+  }
+};
+
+export const updateStudio = async (id: string, input: UpdateStudioInput): Promise<Studio | null> => {
+  const properties: Record<string, any> = {};
+
+  if (input.name !== undefined) {
+    properties['Name'] = { title: [{ text: { content: input.name } }] };
+  }
+  if (input.hourlyRate !== undefined) {
+    properties['Hourly Rate'] = { number: input.hourlyRate };
+  }
+  if (input.dayRate !== undefined) {
+    properties['Day Rate'] = { number: input.dayRate };
+  }
+  if (input.location !== undefined) {
+    properties['Location'] = { rich_text: [{ text: { content: input.location } }] };
+  }
+  if (input.description !== undefined) {
+    properties['Description'] = { rich_text: [{ text: { content: input.description } }] };
+  }
+  if (input.status !== undefined) {
+    properties['Status'] = { select: { name: input.status === 'inactive' ? 'Inactive' : 'Active' } };
+  }
+
+  try {
+    const page = await getNotion().pages.update({
+      page_id: id,
+      properties,
+    });
+    return parseStudioFromNotion(page);
+  } catch {
+    return null;
+  }
+};
+
+export const deleteStudio = async (id: string): Promise<boolean> => {
+  try {
+    await getNotion().pages.update({
+      page_id: id,
+      archived: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
 };

@@ -43,3 +43,34 @@ export interface ActiveItems {
   people: any[];
   admin: any[];
 }
+
+// Studio types for admin management
+export interface Studio {
+  id: string;
+  name: string;
+  hourlyRate?: number;
+  dayRate?: number;
+  location?: string;
+  description?: string;
+  status: 'active' | 'inactive';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateStudioInput {
+  name: string;
+  hourlyRate?: number;
+  dayRate?: number;
+  location?: string;
+  description?: string;
+  status?: 'active' | 'inactive';
+}
+
+export interface UpdateStudioInput {
+  name?: string;
+  hourlyRate?: number;
+  dayRate?: number;
+  location?: string;
+  description?: string;
+  status?: 'active' | 'inactive';
+}
