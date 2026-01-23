@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { generateReviewMessage } from '@/lib/digest';
 import { getSlackClient } from '@/lib/slack';
+import { previewBackfillTags } from '@/lib/backfillTags';
+import { createInboxLogEntry } from '@/lib/notion';
 import crypto from 'crypto';
 
 const verifySlackRequest = async (req: NextRequest, body: string): Promise<boolean> => {
@@ -42,6 +44,38 @@ const handleReview = async (channelId: string) => {
   }
 };
 
+const handleBackfill = async (channelId: string) => {
+  try {
+    const { items } = await previewBackfillTags();
+    if (items.length === 0) {
+      await getSlackClient().chat.postMessage({
+        channel: channelId,
+        text: '🏷️ No items to tag. All active items already have tags or no tags could be inferred.',
+      });
+      return;
+    }
+    const lines = items.map((i) => `• ${i.title} → [${i.tags.join(', ')}]`);
+    const text =
+      `🏷️ *Tag backfill preview* — Reply ✅ to apply, 👎 to cancel, or _yes except don't tag 'X'_ to exclude.\n\n` +
+      lines.join('\n');
+    const res = await getSlackClient().chat.postMessage({ channel: channelId, text });
+    await createInboxLogEntry({
+      originalText: '/backfill',
+      destination: 'tasks',
+      confidence: 0,
+      slackTs: res.ts!,
+      status: 'Pending Backfill',
+      filedToId: JSON.stringify({ items }),
+    });
+  } catch (error) {
+    console.error('Backfill command failed:', error);
+    await getSlackClient().chat.postMessage({
+      channel: channelId,
+      text: '❌ Backfill failed. Check Vercel logs.',
+    });
+  }
+};
+
 export async function POST(req: NextRequest) {
   const body = await req.text();
   
@@ -57,11 +91,18 @@ export async function POST(req: NextRequest) {
   const channelId = params.get('channel_id');
 
   if (command === '/review' && channelId) {
-    // Acknowledge immediately, process in background
     waitUntil(handleReview(channelId));
     return NextResponse.json({
       response_type: 'ephemeral',
       text: '📋 Generating your review...',
+    });
+  }
+
+  if (command === '/backfill' && channelId) {
+    waitUntil(handleBackfill(channelId));
+    return NextResponse.json({
+      response_type: 'ephemeral',
+      text: '🏷️ Generating backfill preview...',
     });
   }
 

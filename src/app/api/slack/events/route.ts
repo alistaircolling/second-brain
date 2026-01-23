@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { waitUntil } from '@vercel/functions';
 import { verifySlackRequest, getSlackClient } from '@/lib/slack';
-import { processCapture, handleFix, handleUpdateConfirmation } from '@/lib/classifier';
+import { processCapture, handleFix, handleUpdateConfirmation, handleBackfillConfirmation } from '@/lib/classifier';
+import { findInboxLogBySlackTs } from '@/lib/notion';
 import { transcribeAudio } from '@/lib/openai';
 
 // Track processed events to prevent duplicates from Slack retries
@@ -32,20 +33,30 @@ export async function POST(req: NextRequest) {
   if (event.type === 'reaction_added') {
     const reaction = event.reaction;
     if (YES_REACTIONS.includes(reaction) || NO_REACTIONS.includes(reaction)) {
-      // Get the message that was reacted to
       const result = await getSlackClient().conversations.replies({
         channel: event.item.channel,
         ts: event.item.ts,
         limit: 1,
       });
       const message = result.messages?.[0];
-      if (message?.thread_ts) {
+      const lookupTs = message?.thread_ts || message?.ts;
+      if (lookupTs) {
+        const inbox = await findInboxLogBySlackTs(lookupTs);
         const replyText = YES_REACTIONS.includes(reaction) ? 'yes' : 'no';
-        waitUntil(handleUpdateConfirmation({
-          text: replyText,
-          thread_ts: message.thread_ts,
-          channel: event.item.channel,
-        }));
+        if (inbox) {
+          const status = inbox.properties?.Status?.select?.name;
+          if (status === 'Pending Backfill' || status === 'Pending Backfill Revised') {
+            waitUntil(handleBackfillConfirmation(inbox, replyText, { channel: event.item.channel, thread_ts: lookupTs }));
+            return NextResponse.json({ ok: true });
+          }
+          if (status === 'Pending Update') {
+            waitUntil(handleUpdateConfirmation({ text: replyText, thread_ts: message.thread_ts || lookupTs, channel: event.item.channel }));
+            return NextResponse.json({ ok: true });
+          }
+        }
+        if (message?.thread_ts) {
+          waitUntil(handleUpdateConfirmation({ text: replyText, thread_ts: message.thread_ts, channel: event.item.channel }));
+        }
       }
     }
     return NextResponse.json({ ok: true });
@@ -69,12 +80,17 @@ export async function POST(req: NextRequest) {
   // Clean up old events after 5 minutes
   setTimeout(() => processedEvents.delete(eventId), 5 * 60 * 1000);
 
-  // Handle thread replies (fix commands or update confirmations)
+  // Handle thread replies (fix, update confirmations, backfill confirmations)
   if (event.thread_ts) {
+    const inbox = await findInboxLogBySlackTs(event.thread_ts);
+    const backfillStatus = inbox?.properties?.Status?.select?.name;
+    if (backfillStatus === 'Pending Backfill' || backfillStatus === 'Pending Backfill Revised') {
+      waitUntil(handleBackfillConfirmation(inbox, event.text || '', { channel: event.channel, thread_ts: event.thread_ts }));
+      return NextResponse.json({ ok: true });
+    }
     if (event.text?.toLowerCase().startsWith('fix:')) {
       waitUntil(handleFix(event));
     } else {
-      // Could be an update confirmation (yes/no/number)
       waitUntil(handleUpdateConfirmation(event));
     }
     return NextResponse.json({ ok: true });

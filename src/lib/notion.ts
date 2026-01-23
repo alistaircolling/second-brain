@@ -238,6 +238,15 @@ export const updateNotionItem = async (
   });
 };
 
+export const updatePageTags = async (pageId: string, tags: string[]): Promise<void> => {
+  await getNotion().pages.update({
+    page_id: pageId,
+    properties: {
+      Tags: { multi_select: tags.map((t) => ({ name: t })) },
+    },
+  });
+};
+
 export const getItemsByTag = async (tag: string): Promise<any[]> => {
   const tagFilter = {
     and: [

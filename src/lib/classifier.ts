@@ -1,5 +1,5 @@
 import { classifyMessage } from '@/lib/openai';
-import { createNotionRecord, createInboxLogEntry, findInboxLogBySlackTs, updateInboxLogEntry, searchItems, updateNotionItem, getItemsByTag, queryDatabase } from '@/lib/notion';
+import { createNotionRecord, createInboxLogEntry, findInboxLogBySlackTs, updateInboxLogEntry, searchItems, updateNotionItem, updatePageTags, getItemsByTag, queryDatabase } from '@/lib/notion';
 import { sendSlackReply } from '@/lib/slack';
 import { ClassificationResult } from '@/types';
 
@@ -246,6 +246,93 @@ const handleTagQuery = async (
     slackTs,
     `${emoji} *${tag.charAt(0).toUpperCase() + tag.slice(1)} List* (${items.length} items)\n\n${list}`
   );
+};
+
+const applyBackfillItems = async (
+  inboxEntry: any,
+  toApply: Array<{ id: string; title: string; tags: string[] }>,
+  channel: string,
+  thread_ts: string,
+  excludeTitle?: string | null
+): Promise<void> => {
+  let updated = 0,
+    errors = 0;
+  for (const i of toApply) {
+    try {
+      await updatePageTags(i.id, i.tags);
+      updated++;
+    } catch {
+      errors++;
+    }
+  }
+  await updateInboxLogEntry(inboxEntry.id, { Status: { select: { name: 'Backfill Applied' } } });
+  let msg = `✓ Backfill applied. Updated ${updated} items.`;
+  if (excludeTitle) msg += ` Excluded: ${excludeTitle}.`;
+  if (errors) msg += ` (${errors} errors)`;
+  await sendSlackReply(channel, thread_ts, msg);
+};
+
+export const handleBackfillConfirmation = async (
+  inboxEntry: any,
+  replyText: string,
+  { channel, thread_ts }: { channel: string; thread_ts: string }
+): Promise<void> => {
+  const status = inboxEntry.properties?.Status?.select?.name;
+  const raw = inboxEntry.properties['Filed To ID']?.rich_text?.[0]?.text?.content || '{}';
+  const payload = JSON.parse(raw);
+  const items: Array<{ id: string; title: string; tags: string[] }> = payload.items || [];
+
+  const reply = replyText.trim().toLowerCase();
+  const cancel = ['no', 'cancel', 'n'].includes(reply) || reply === '👎';
+  if (cancel) {
+    await updateInboxLogEntry(inboxEntry.id, { Status: { select: { name: 'Cancelled' } } });
+    await sendSlackReply(channel, thread_ts, 'Backfill cancelled.');
+    return;
+  }
+
+  // Revised preview: payload is already the filtered list; apply on ✅, cancel on 👎
+  if (status === 'Pending Backfill Revised') {
+    const isAccept = ['yes', 'y', 'accept', 'ok'].includes(reply) || /[✅👍]/.test(reply);
+    if (!isAccept) {
+      await sendSlackReply(channel, thread_ts, "Reply ✅ to confirm, 👎 to cancel.");
+      return;
+    }
+    await applyBackfillItems(inboxEntry, items, channel, thread_ts);
+    return;
+  }
+
+  // Initial preview: accept all, or accept with exclusion (show revised, then confirm)
+  const isAccept =
+    ['yes', 'y', 'accept', 'ok'].includes(reply) ||
+    /[✅👍]/.test(reply) ||
+    /except don'?t tag/i.test(reply);
+  if (!isAccept) {
+    await sendSlackReply(channel, thread_ts, "Reply ✅ to apply, 👎 to cancel, or _yes except don't tag 'X'_ to exclude.");
+    return;
+  }
+
+  const exclMatch = reply.match(/except don'?t tag ['"]([^'"]+)['"]/i);
+  const excludeTitle = exclMatch ? exclMatch[1].trim() : null;
+  const toApply = excludeTitle
+    ? items.filter((i) => !i.title.toLowerCase().includes(excludeTitle.toLowerCase()))
+    : items;
+
+  if (excludeTitle) {
+    // Post revised list and ask for ✅ to confirm before applying
+    const lines = toApply.map((i) => `• ${i.title} → [${i.tags.join(', ')}]`);
+    const revised =
+      `🏷️ *Revised backfill* (excluding '${excludeTitle}'):\n\n` +
+      (lines.length ? lines.join('\n') : '_No items left after exclusion._') +
+      "\n\nReply ✅ to confirm, 👎 to cancel.";
+    await updateInboxLogEntry(inboxEntry.id, {
+      Status: { select: { name: 'Pending Backfill Revised' } },
+      'Filed To ID': { rich_text: [{ text: { content: JSON.stringify({ items: toApply }) } }] },
+    });
+    await sendSlackReply(channel, thread_ts, revised);
+    return;
+  }
+
+  await applyBackfillItems(inboxEntry, toApply, channel, thread_ts);
 };
 
 export const handleFix = async (event: any): Promise<void> => {
