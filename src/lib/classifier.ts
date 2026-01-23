@@ -1,5 +1,5 @@
 import { classifyMessage } from '@/lib/openai';
-import { createNotionRecord, createInboxLogEntry, findInboxLogBySlackTs, updateInboxLogEntry, searchItems, updateNotionItem } from '@/lib/notion';
+import { createNotionRecord, createInboxLogEntry, findInboxLogBySlackTs, updateInboxLogEntry, searchItems, updateNotionItem, queryDatabase } from '@/lib/notion';
 import { sendSlackReply } from '@/lib/slack';
 import { ClassificationResult } from '@/types';
 
@@ -10,6 +10,12 @@ export const processCapture = async (
 ): Promise<void> => {
   // Classify the message
   const result = await classifyMessage(text);
+
+  // Handle query actions
+  if (result.action === 'query' && result.query) {
+    await handleQueryRequest(result, slackTs, channel);
+    return;
+  }
 
   // Handle update actions
   if (result.action === 'update' && result.update) {
@@ -238,4 +244,80 @@ export const handleFix = async (event: any): Promise<void> => {
     event.thread_ts,
     `✓ Fixed! Moved to *${newDestination}*: ${result.data.title}`
   );
+};
+
+const handleQueryRequest = async (
+  result: ClassificationResult,
+  slackTs: string,
+  channel: string
+): Promise<void> => {
+  const { database, filter } = result.query!;
+  const today = new Date().toISOString().split('T')[0];
+  
+  // Build filter based on query type
+  const notDoneFilter = {
+    property: 'Status',
+    select: { does_not_equal: 'Done' },
+  };
+  
+  const buildFilter = () => {
+    const conditions: any[] = [notDoneFilter];
+    
+    if (filter === 'due_today') {
+      conditions.push({ property: 'Due Date', date: { equals: today } });
+    } else if (filter === 'overdue') {
+      conditions.push({ property: 'Due Date', date: { before: today } });
+    } else if (filter === 'high_priority') {
+      conditions.push({ property: 'Priority', number: { equals: 1 } });
+    }
+    
+    return conditions.length === 1 ? conditions[0] : { and: conditions };
+  };
+  
+  // Determine which databases to query
+  const databasesToQuery = database === 'all' 
+    ? ['tasks', 'work', 'people', 'admin'] as const
+    : [database] as const;
+  
+  // Query and collect results
+  const allResults: { db: string; items: any[] }[] = [];
+  
+  for (const db of databasesToQuery) {
+    const items = await queryDatabase(db, buildFilter());
+    if (items.length > 0) {
+      allResults.push({ db, items });
+    }
+  }
+  
+  // Format response
+  if (allResults.every(r => r.items.length === 0)) {
+    await sendSlackReply(channel, slackTs, `No items found.`);
+    return;
+  }
+  
+  const titleProp = (db: string) => db === 'people' ? 'Name' : 'Title';
+  
+  const formatItem = (item: any, db: string) => {
+    const props = item.properties;
+    const title = props[titleProp(db)]?.title?.[0]?.text?.content || 'Untitled';
+    const priority = props.Priority?.number;
+    const dueDate = props['Due Date']?.date?.start;
+    const followUp = props['Follow-up']?.rich_text?.[0]?.text?.content;
+    
+    let line = `• ${title}`;
+    if (priority) line += ` [P${priority}]`;
+    if (dueDate) line += ` _(${dueDate})_`;
+    if (followUp) line += ` - ${followUp}`;
+    return line;
+  };
+  
+  let message = '';
+  for (const { db, items } of allResults) {
+    message += `*${db.charAt(0).toUpperCase() + db.slice(1)}:*\n`;
+    message += items.slice(0, 10).map(item => formatItem(item, db)).join('\n');
+    if (items.length > 10) message += `\n_(+${items.length - 10} more)_`;
+    message += '\n\n';
+  }
+  
+  await sendSlackReply(channel, slackTs, message.trim());
 };

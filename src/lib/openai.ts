@@ -9,6 +9,7 @@ Analyze the input and return JSON only, no markdown.
 First determine the ACTION:
 - "create": User wants to add a new item (default)
 - "update": User wants to modify an existing item (e.g., "mark X as done", "change due date on X", "complete X", "set X to done")
+- "query": User is asking a question about their items (e.g., "who do I have to call?", "what's due today?", "what tasks do I have?", "show me my work items")
 
 Categories:
 - "tasks": General to-do items, DIY tasks, things to order, online admin
@@ -33,13 +34,24 @@ For UPDATE actions, extract:
 - update.field: "status" or "due_date"
 - update.value: The new value (e.g., "Done", "2024-01-25")
 
+For QUERY actions, extract:
+- query.database: Which database to query ("tasks", "work", "people", "admin", or "all")
+- query.filter: Optional filter ("due_today", "overdue", "high_priority", "all_active")
+
+Examples of query detection:
+- "who do I have to call?" → action: "query", query.database: "people"
+- "what's due today?" → action: "query", query.database: "all", query.filter: "due_today"
+- "show me my work tasks" → action: "query", query.database: "work"
+- "what are my priorities?" → action: "query", query.database: "all", query.filter: "high_priority"
+
 Return JSON:
 {
-  "action": "create" | "update",
+  "action": "create" | "update" | "query",
   "destination": "tasks" | "work" | "people" | "admin",
   "confidence": 0.0-1.0,
   "data": { ... },
-  "update": { "search_query": "...", "field": "...", "value": "..." }  // only for update action
+  "update": { "search_query": "...", "field": "...", "value": "..." },  // only for update action
+  "query": { "database": "...", "filter": "..." }  // only for query action
 }`;
 
 export const classifyMessage = async (text: string): Promise<ClassificationResult> => {
