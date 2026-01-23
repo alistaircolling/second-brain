@@ -22,7 +22,7 @@ For CREATE actions, extract:
 - project: (work only) "Mintstars", "Rak", or other project name
 - category: (admin only) "Appointments", "Bills", or "Orders"
 - person_name: (people only) The person's name
-- follow_up: (people only) What action to take
+- follow_up: (people only) The action verb only (e.g., "Call", "Email", "Text", "Meet"). Keep it to 1-2 words max.
 - due_date: ISO date if mentioned or implied (e.g., "tomorrow" = calculate date). Today is ${new Date().toISOString().split('T')[0]}.
 - priority: 1 (high), 2 (medium), or 3 (low) - infer from urgency words like "urgent", "asap", "when I get a chance"
 - tags: Array of context tags. Known tags: "groceries", "phone", "laptop", "home", "office", "errands". Auto-detect from content:
