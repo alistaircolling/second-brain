@@ -302,7 +302,7 @@ const handleQueryRequest = async (
   slackTs: string,
   channel: string
 ): Promise<void> => {
-  const { database, filter } = result.query!;
+  const { database = 'all', filter } = result.query!;
   const today = new Date().toISOString().split('T')[0];
   
   // Build filter based on query type
@@ -326,9 +326,9 @@ const handleQueryRequest = async (
   };
   
   // Determine which databases to query
-  const databasesToQuery = database === 'all' 
-    ? ['tasks', 'work', 'people', 'admin'] as const
-    : [database] as const;
+  const databasesToQuery: readonly ('tasks' | 'work' | 'people' | 'admin')[] = database === 'all' 
+    ? ['tasks', 'work', 'people', 'admin']
+    : [database];
   
   // Query and collect results
   const allResults: { db: string; items: any[] }[] = [];
