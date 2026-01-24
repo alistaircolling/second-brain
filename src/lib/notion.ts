@@ -60,6 +60,14 @@ const buildProperties = (destination: string, data: Record<string, any>) => {
         }
         if (!personName) personName = data.title;
       }
+      // If person_name already contains the follow_up action verb, strip it to avoid duplication
+      if (personName && data.follow_up) {
+        const followUpLower = data.follow_up.toLowerCase().trim();
+        const personNameLower = personName.toLowerCase();
+        if (personNameLower.startsWith(followUpLower + ' ')) {
+          personName = personName.substring(followUpLower.length + 1).trim();
+        }
+      }
       return {
         Name: { title: [{ text: { content: personName || '' } }] },
         'Follow-up': { rich_text: [{ text: { content: data.follow_up || '' } }] },

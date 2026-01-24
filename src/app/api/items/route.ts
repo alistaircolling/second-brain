@@ -10,7 +10,16 @@ const getText = (value: any): string | null =>
 const getTitle = (properties: Record<string, any>): string => {
   const name = getText(properties.Name?.title?.[0]);
   const followUp = getText(properties['Follow-up']?.rich_text?.[0]);
-  if (name && followUp) return `${followUp} ${name}`;
+  if (name && followUp) {
+    // Strip action verb from name if it starts with the same verb as followUp to avoid duplication
+    const followUpLower = followUp.toLowerCase().trim();
+    const nameLower = name.toLowerCase();
+    if (nameLower.startsWith(followUpLower + ' ')) {
+      const cleanName = name.substring(followUpLower.length + 1).trim();
+      return `${followUp} ${cleanName}`;
+    }
+    return `${followUp} ${name}`;
+  }
 
   const title = getText(properties.Title?.title?.[0]);
   return title || name || 'Untitled';

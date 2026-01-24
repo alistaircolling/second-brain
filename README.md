@@ -1,4 +1,4 @@
-# Second Brain
+# Cynthia
 
 A personal capture system that lets you drop thoughts/tasks into Slack (text or voice), automatically classifies and files them to Notion, sends you digests, and allows corrections via reply.
 
@@ -101,7 +101,7 @@ Get each database ID from the URL: `notion.so/DATABASE_ID?v=...`
    - Command: `/review`
    - URL: `https://your-app.vercel.app/api/slack/commands`
 6. Install to workspace
-7. Create a private channel (e.g. `#second-brain`) and invite the bot
+7. Create a private channel (e.g. `#cynthia`) and invite the bot
 
 ### 3. Environment Variables
 

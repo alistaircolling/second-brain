@@ -17,13 +17,17 @@ Categories:
 - "people": Follow-ups with specific people, meetings to arrange with someone
 - "admin": Appointments, bills, scheduled events
 
+CRITICAL rules:
+- If the task mentions "Mintstars", "mintstars", "Rak", etc. → destination MUST be "work" and set project (e.g. "Mintstars", "Rak").
+- Always set due_date when a weekday or relative date is mentioned ("on Monday", "Tuesday", "tomorrow", "next Friday"). Use ISO format YYYY-MM-DD. Today is ${new Date().toISOString().split('T')[0]}. "on Monday" = that Monday's date.
+
 For CREATE actions, extract:
 - title: Brief, actionable title. Preserve the original action verb (call, email, text, meet, message, etc.)
 - project: (work only) "Mintstars", "Rak", or other project name
 - category: (admin only) "Appointments", "Bills", or "Orders"
 - person_name: (people only) REQUIRED. The person's name only (e.g., "Nick", "Sarah", "HMRC"). Do NOT include the action verb.
 - follow_up: (people only) The action verb only (e.g., "Call", "Email", "Text", "Meet"). Keep it to 1-2 words max.
-- due_date: ISO date if mentioned or implied (e.g., "tomorrow" = calculate date). Today is ${new Date().toISOString().split('T')[0]}.
+- due_date: ISO date (YYYY-MM-DD) when a day is mentioned or implied. Weekdays ("on Monday"), "tomorrow", "next Friday" → compute from today. Always include if present in text.
 - priority: 1 (high), 2 (medium), or 3 (low) - infer from urgency words like "urgent", "asap", "when I get a chance"
 - tags: Array of context tags. Known tags: "groceries", "phone", "laptop", "home", "office", "errands". Auto-detect from content:
   - Food/grocery items → "groceries"
@@ -54,6 +58,8 @@ Examples of query detection:
 - "what can I do at home?" → query.tag: "home"
 - "what's due today?" → query.database: "all", query.filter: "due_today"
 - "show me my work tasks" → query.database: "work"
+
+Example CREATE: "review vercel spend for mintstars on monday" → action: "create", destination: "work", data: { title: "Review Vercel spend for Mintstars", project: "Mintstars", due_date: that Monday as YYYY-MM-DD }
 
 Return JSON:
 {

@@ -106,14 +106,11 @@ export default function Home() {
       if (!res.ok) throw new Error('Failed to classify item.');
       const data = await res.json();
 
-      if (data.action !== 'create' || !data.destination || !data.data) {
-        throw new Error('Only new items can be added here.');
-      }
-
+      const isCreate = data.action === 'create' && data.destination && data.data;
       setPendingCreate({
-        title: data.data.title || itemTitle,
-        destination: data.destination,
-        data: data.data,
+        title: isCreate ? (data.data.title || itemTitle) : itemTitle,
+        destination: isCreate ? data.destination : 'tasks',
+        data: isCreate ? data.data : { title: itemTitle },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to classify item.');

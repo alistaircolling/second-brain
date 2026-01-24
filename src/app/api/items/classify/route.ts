@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isRequestAuthorized } from '@/lib/auth';
+import { resolveDueDateFromText } from '@/lib/dateResolver';
 import { classifyMessage } from '@/lib/openai';
 
 export async function POST(req: NextRequest) {
@@ -15,6 +16,8 @@ export async function POST(req: NextRequest) {
   }
 
   const result = await classifyMessage(text);
+  const resolved = resolveDueDateFromText(text);
+  if (resolved && result.data) result.data.due_date = resolved;
 
   return NextResponse.json(result);
 }

@@ -8,6 +8,13 @@ const getTitle = (item: any): string => {
   const name = item.properties.Name?.title?.[0]?.text?.content;
   const followUp = item.properties['Follow-up']?.rich_text?.[0]?.text?.content;
   if (name && followUp) {
+    // Strip action verb from name if it starts with the same verb as followUp to avoid duplication
+    const followUpLower = followUp.toLowerCase().trim();
+    const nameLower = name.toLowerCase();
+    if (nameLower.startsWith(followUpLower + ' ')) {
+      const cleanName = name.substring(followUpLower.length + 1).trim();
+      return `${followUp} ${cleanName}`;
+    }
     return `${followUp} ${name}`;
   }
   

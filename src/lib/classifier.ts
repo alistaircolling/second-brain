@@ -2,11 +2,21 @@ import { classifyMessage } from '@/lib/openai';
 import { createNotionRecord, createInboxLogEntry, findInboxLogBySlackTs, updateInboxLogEntry, searchItems, updateNotionItem, updatePageTags, getItemsByTag, queryDatabase } from '@/lib/notion';
 import { sendSlackReply } from '@/lib/slack';
 import { ClassificationResult } from '@/types';
+import { resolveDueDateFromText } from '@/lib/dateResolver';
 
 const getItemTitle = (item: any): string => {
   const name = item.properties.Name?.title?.[0]?.text?.content;
   const followUp = item.properties['Follow-up']?.rich_text?.[0]?.text?.content;
-  if (name && followUp) return `${followUp} ${name}`;
+  if (name && followUp) {
+    // Strip action verb from name if it starts with the same verb as followUp to avoid duplication
+    const followUpLower = followUp.toLowerCase().trim();
+    const nameLower = name.toLowerCase();
+    if (nameLower.startsWith(followUpLower + ' ')) {
+      const cleanName = name.substring(followUpLower.length + 1).trim();
+      return `${followUp} ${cleanName}`;
+    }
+    return `${followUp} ${name}`;
+  }
   return item.properties.Title?.title?.[0]?.text?.content || name || 'Untitled';
 };
 
@@ -17,6 +27,8 @@ export const processCapture = async (
 ): Promise<void> => {
   // Classify the message
   const result = await classifyMessage(text);
+  const resolved = resolveDueDateFromText(text);
+  if (resolved && result.data) result.data.due_date = resolved;
 
   // Handle query actions
   if (result.action === 'query' && result.query) {
@@ -437,15 +449,28 @@ const handleQueryRequest = async (
   
   const formatItem = (item: any, db: string) => {
     const props = item.properties;
-    const title = props[titleProp(db)]?.title?.[0]?.text?.content || 'Untitled';
+    const name = props.Name?.title?.[0]?.text?.content;
+    const followUp = props['Follow-up']?.rich_text?.[0]?.text?.content;
+    let title: string;
+    if (db === 'people' && name && followUp) {
+      // Strip action verb from name if it starts with the same verb as followUp to avoid duplication
+      const followUpLower = followUp.toLowerCase().trim();
+      const nameLower = name.toLowerCase();
+      if (nameLower.startsWith(followUpLower + ' ')) {
+        const cleanName = name.substring(followUpLower.length + 1).trim();
+        title = `${followUp} ${cleanName}`;
+      } else {
+        title = `${followUp} ${name}`;
+      }
+    } else {
+      title = props[titleProp(db)]?.title?.[0]?.text?.content || 'Untitled';
+    }
     const priority = props.Priority?.number;
     const dueDate = props['Due Date']?.date?.start;
-    const followUp = props['Follow-up']?.rich_text?.[0]?.text?.content;
     
     let line = `• ${title}`;
     if (priority) line += ` [P${priority}]`;
     if (dueDate) line += ` _(${dueDate})_`;
-    if (followUp) line += ` - ${followUp}`;
     return line;
   };
   
