@@ -46,12 +46,26 @@ const buildProperties = (destination: string, data: Record<string, any>) => {
         ...base,
       };
 
-    case 'people':
+    case 'people': {
+      // Extract person name from title if person_name is missing, removing action verbs
+      let personName = data.person_name;
+      if (!personName && data.title) {
+        const actionVerbs = ['call', 'email', 'text', 'meet', 'message', 'contact', 'reach out'];
+        const titleLower = data.title.toLowerCase();
+        for (const verb of actionVerbs) {
+          if (titleLower.startsWith(verb + ' ')) {
+            personName = data.title.substring(verb.length + 1).trim();
+            break;
+          }
+        }
+        if (!personName) personName = data.title;
+      }
       return {
-        Name: { title: [{ text: { content: data.person_name || data.title } }] },
+        Name: { title: [{ text: { content: personName || '' } }] },
         'Follow-up': { rich_text: [{ text: { content: data.follow_up || '' } }] },
         ...base,
       };
+    }
 
     case 'admin':
       return {

@@ -21,7 +21,7 @@ For CREATE actions, extract:
 - title: Brief, actionable title. Preserve the original action verb (call, email, text, meet, message, etc.)
 - project: (work only) "Mintstars", "Rak", or other project name
 - category: (admin only) "Appointments", "Bills", or "Orders"
-- person_name: (people only) The person's name
+- person_name: (people only) REQUIRED. The person's name only (e.g., "Nick", "Sarah", "HMRC"). Do NOT include the action verb.
 - follow_up: (people only) The action verb only (e.g., "Call", "Email", "Text", "Meet"). Keep it to 1-2 words max.
 - due_date: ISO date if mentioned or implied (e.g., "tomorrow" = calculate date). Today is ${new Date().toISOString().split('T')[0]}.
 - priority: 1 (high), 2 (medium), or 3 (low) - infer from urgency words like "urgent", "asap", "when I get a chance"
