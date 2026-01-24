@@ -258,6 +258,63 @@ export const updatePageTags = async (pageId: string, tags: string[]): Promise<vo
   });
 };
 
+export const getTagOptions = async (
+  database: keyof typeof DB_IDS
+): Promise<string[]> => {
+  const response = await getNotion().databases.retrieve({
+    database_id: DB_IDS[database],
+  });
+
+  const options = (response as any)?.properties?.Tags?.multi_select?.options || [];
+
+  return options.map((option: any) => option.name).filter(Boolean);
+};
+
+export const updateItemFields = async (
+  pageId: string,
+  database: keyof typeof DB_IDS,
+  updates: {
+    title?: string;
+    dueDate?: string | null;
+    priority?: number | null;
+    tags?: string[];
+  }
+): Promise<void> => {
+  const properties: Record<string, any> = {};
+
+  if (updates.title !== undefined) {
+    if (database === 'people') {
+      properties.Name = { title: [{ text: { content: updates.title } }] };
+    } else {
+      properties.Title = { title: [{ text: { content: updates.title } }] };
+    }
+  }
+
+  if (updates.dueDate !== undefined) {
+    properties['Due Date'] = updates.dueDate
+      ? { date: { start: updates.dueDate } }
+      : { date: null };
+  }
+
+  if (updates.priority !== undefined) {
+    properties.Priority =
+      updates.priority === null ? { number: null } : { number: updates.priority };
+  }
+
+  if (updates.tags !== undefined) {
+    properties.Tags = {
+      multi_select: updates.tags.map((tag) => ({ name: tag })),
+    };
+  }
+
+  if (Object.keys(properties).length === 0) return;
+
+  await getNotion().pages.update({
+    page_id: pageId,
+    properties,
+  });
+};
+
 export const getItemsByTag = async (tag: string): Promise<any[]> => {
   const tagFilter = {
     and: [

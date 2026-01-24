@@ -1,6 +1,20 @@
+import './index.css';
+import { Roboto_Mono } from 'next/font/google';
+
+const robotoMono = Roboto_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
+  display: 'swap',
+});
+
 export const metadata = {
   title: 'Second Brain',
   description: 'Personal capture system',
+  manifest: '/manifest.json',
+  themeColor: '#111827',
+  icons: {
+    icon: '/icon.svg',
+  },
 };
 
 export default function RootLayout({
@@ -9,8 +23,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" className="dark">
+      <body className={`${robotoMono.variable} min-h-screen bg-background text-foreground antialiased`}>
+        {children}
+      </body>
     </html>
   );
 }
