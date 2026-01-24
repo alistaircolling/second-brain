@@ -8,7 +8,7 @@ const robotoMono = Roboto_Mono({
 });
 
 export const metadata = {
-  title: 'Second Brain',
+  title: 'Cynthia',
   description: 'Personal capture system',
   manifest: '/manifest.json',
   themeColor: '#111827',
