@@ -446,7 +446,7 @@ export default function Home() {
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">Cynthia</h1>
         <p className="text-sm text-muted-foreground">
-          Capture tasks quickly from your phone or Slack.
+        What do you want to do?
         </p>
       </header>
 
