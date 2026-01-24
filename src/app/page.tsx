@@ -33,7 +33,6 @@ export default function Home() {
   const router = useRouter();
   const [items, setItems] = useState<Item[]>([]);
   const [title, setTitle] = useState('');
-  const [destination, setDestination] = useState<Database>('tasks');
   const [filter, setFilter] = useState<'all' | Database>('all');
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -46,7 +45,16 @@ export default function Home() {
     people: [],
     admin: [],
   });
+  const [showTagPicker, setShowTagPicker] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [allTags, setAllTags] = useState<string[]>([]);
   const [isEditing, setIsEditing] = useState(false);
+  const [pendingCreate, setPendingCreate] = useState<{
+    title: string;
+    destination: Database;
+    data: Record<string, any>;
+  } | null>(null);
+  const [isClassifying, setIsClassifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -78,9 +86,44 @@ export default function Home() {
     loadItems();
   }, []);
 
-  const createItem = async (value?: string) => {
+  const classifyItem = async (value?: string) => {
     const itemTitle = (value ?? title).trim();
     if (!itemTitle) return;
+
+    setIsClassifying(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/items/classify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: itemTitle }),
+      });
+      if (res.status === 401) {
+        router.push('/login');
+        return;
+      }
+      if (!res.ok) throw new Error('Failed to classify item.');
+      const data = await res.json();
+
+      if (data.action !== 'create' || !data.destination || !data.data) {
+        throw new Error('Only new items can be added here.');
+      }
+
+      setPendingCreate({
+        title: data.data.title || itemTitle,
+        destination: data.destination,
+        data: data.data,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to classify item.');
+    } finally {
+      setIsClassifying(false);
+    }
+  };
+
+  const confirmCreate = async () => {
+    if (!pendingCreate) return;
 
     setIsSaving(true);
     setError(null);
@@ -89,7 +132,10 @@ export default function Home() {
       const res = await fetch('/api/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: itemTitle, destination }),
+        body: JSON.stringify({
+          destination: pendingCreate.destination,
+          data: pendingCreate.data,
+        }),
       });
       if (res.status === 401) {
         router.push('/login');
@@ -97,12 +143,18 @@ export default function Home() {
       }
       if (!res.ok) throw new Error('Failed to create item.');
       setTitle('');
+      setPendingCreate(null);
       await loadItems();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create item.');
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const cancelCreate = () => {
+    if (isSaving) return;
+    setPendingCreate(null);
   };
 
   const markDone = async (id: string) => {
@@ -164,7 +216,7 @@ export default function Home() {
       const transcript = result?.[0]?.transcript?.trim();
       if (transcript) {
         setTitle(transcript);
-        createItem(transcript);
+        classifyItem(transcript);
       }
     };
 
@@ -251,10 +303,38 @@ export default function Home() {
     }
   }, [selectedItem]);
 
+  const loadAllTags = async () => {
+    const databases: Database[] = ['tasks', 'work', 'people', 'admin'];
+    const requests = databases.map((db) =>
+      fetch(`/api/items/tags?database=${db}`)
+        .then((res) => (res.ok ? res.json() : { tags: [] }))
+        .catch(() => ({ tags: [] }))
+    );
+
+    const results = await Promise.all(requests);
+    const tags = results
+      .flatMap((result) => (Array.isArray(result.tags) ? result.tags : []))
+      .filter((tag) => typeof tag === 'string' && tag.trim().length > 0);
+
+    setAllTags(Array.from(new Set(tags)).sort());
+  };
+
+  useEffect(() => {
+    if (showTagPicker && allTags.length === 0) {
+      loadAllTags();
+    }
+  }, [showTagPicker, allTags.length]);
+
   const filteredItems = useMemo(() => {
-    if (filter === 'all') return items;
-    return items.filter((item) => item.database === filter);
-  }, [filter, items]);
+    let result = items;
+    if (filter !== 'all') {
+      result = result.filter((item) => item.database === filter);
+    }
+    if (tagFilter) {
+      result = result.filter((item) => item.tags.includes(tagFilter));
+    }
+    return result;
+  }, [filter, items, tagFilter]);
 
   const sortByPriority = (a: Item, b: Item) =>
     (a.priority ?? 99) - (b.priority ?? 99);
@@ -382,7 +462,7 @@ export default function Home() {
             className="flex flex-col gap-3"
             onSubmit={(event) => {
               event.preventDefault();
-              createItem();
+              classifyItem();
             }}
           >
             <div className="space-y-2">
@@ -399,32 +479,19 @@ export default function Home() {
                 autoComplete="off"
               />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium" htmlFor="destination">
-                Destination
-              </label>
-              <select
-                id="destination"
-                name="destination"
-                value={destination}
-                onChange={(event) => setDestination(event.target.value as Database)}
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                {(['tasks', 'work', 'people', 'admin'] as Database[]).map((option) => (
-                  <option key={option} value={option}>
-                    {DATABASE_LABELS[option]}
-                  </option>
-                ))}
-              </select>
-            </div>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button type="submit" disabled={isBusy}>
+              <Button type="submit" disabled={isBusy || isClassifying}>
                 Add item
               </Button>
-              <Button type="button" variant="secondary" onClick={startVoiceCapture} disabled={isBusy}>
+              <Button type="button" variant="secondary" onClick={startVoiceCapture} disabled={isBusy || isClassifying}>
                 {isListening ? 'Listening...' : 'Add with voice'}
               </Button>
             </div>
+            {isClassifying && (
+              <p className="text-xs text-muted-foreground">
+                Classifying destination...
+              </p>
+            )}
           </form>
           {voiceError && <p className="mt-3 text-sm text-destructive">{voiceError}</p>}
         </CardContent>
@@ -455,7 +522,61 @@ export default function Home() {
                       : DATABASE_LABELS[option]}
                   </Button>
                 ))}
+                <Button
+                  type="button"
+                  variant={showTagPicker ? 'default' : 'outline'}
+                  onClick={() => {
+                    setShowTagPicker((current) => !current);
+                  }}
+                >
+                  Tags
+                </Button>
               </div>
+
+              {showTagPicker && (
+                <section className="space-y-3">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                    Tags
+                  </h3>
+                  {allTags.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No tags found.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {allTags.map((tag) => (
+                        <Button
+                          key={tag}
+                          type="button"
+                          variant={tagFilter === tag ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => {
+                            setTagFilter(tag);
+                            setShowTagPicker(false);
+                          }}
+                        >
+                          {tag}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+
+              {tagFilter && (
+                <section className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Filtered by tag:</span>
+                  <Button type="button" variant="outline" size="sm">
+                    {tagFilter}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setTagFilter(null)}
+                  >
+                    Clear
+                  </Button>
+                </section>
+              )}
 
               {overdueItems.length > 0 && (
                 <section className="space-y-3">
@@ -582,6 +703,31 @@ export default function Home() {
             </Button>
             <Button type="button" onClick={saveEdits} disabled={isEditing}>
               Save
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(pendingCreate)} onOpenChange={cancelCreate}>
+        <DialogContent className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>Confirm item</DialogTitle>
+            <DialogDescription>
+              Confirm the destination before creating.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-border bg-background p-3 text-sm">
+            <div className="font-medium">{pendingCreate?.title}</div>
+            <div className="text-xs text-muted-foreground">
+              {pendingCreate ? DATABASE_LABELS[pendingCreate.destination] : ''}
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" onClick={cancelCreate}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={confirmCreate} disabled={isBusy}>
+              Create
             </Button>
           </div>
         </DialogContent>

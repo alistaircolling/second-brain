@@ -62,17 +62,21 @@ export async function POST(req: NextRequest) {
   const body = await req.json();
   const title = typeof body?.title === 'string' ? body.title.trim() : '';
   const destination = body?.destination as Database | undefined;
-
-  if (!title) {
-    return NextResponse.json({ error: 'Title is required.' }, { status: 400 });
-  }
+  const data = body?.data as Record<string, any> | undefined;
 
   if (!destination || !['tasks', 'work', 'people', 'admin'].includes(destination)) {
     return NextResponse.json({ error: 'Invalid destination.' }, { status: 400 });
   }
 
-  const payload =
-    destination === 'people' ? { person_name: title } : { title };
+  const payload = data
+    ? data
+    : destination === 'people'
+      ? { person_name: title }
+      : { title };
+
+  if (!payload.title && !payload.person_name) {
+    return NextResponse.json({ error: 'Title is required.' }, { status: 400 });
+  }
 
   const id = await createNotionRecord(destination, payload);
 
